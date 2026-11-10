@@ -1,11 +1,14 @@
 import { useEffect, useMemo } from 'react'
-import { BoxGeometry, Color, DataTexture, ExtrudeGeometry, Float32BufferAttribute, MeshStandardMaterial, NearestFilter, PlaneGeometry, RGBAFormat, Shape, ShapeGeometry, type BufferGeometry } from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { Box3, BoxGeometry, Color, DataTexture, ExtrudeGeometry, Float32BufferAttribute, MeshStandardMaterial, NearestFilter, PlaneGeometry, RGBAFormat, Shape, ShapeGeometry, Vector3, type BufferGeometry } from 'three'
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { Project } from '../data/projects'
 import { createBackTexture, createProjectTexture, createShellTexture } from './textures'
 
 interface CardModelProps {
   project: Project
+  code: string
+  artworkCoverage: number
+  dimensions: { width: number; height: number; thickness: number }
   shellColor: string
   roughness: number
   metalness: number
@@ -16,6 +19,10 @@ interface CardModelProps {
 function bodyShape() {
   const shape = new Shape()
   shape.moveTo(-1.015, -1.4)
+  shape.lineTo(0.77, -1.4)
+  shape.lineTo(0.77, -1.31)
+  shape.lineTo(0.87, -1.31)
+  shape.lineTo(0.87, -1.4)
   shape.lineTo(1.015, -1.4)
   shape.lineTo(1.015, 0.94)
   shape.lineTo(0.565, 1.4)
@@ -97,7 +104,7 @@ function useSharedResource<T>(cache: Map<string, SharedResource<T>>, key: string
 // These eight fixed pieces differ only in color, roughness and metalness.
 // Vertex colors and an eight-pixel material palette retain those differences
 // while submitting the entire set in one draw call.
-const detailColors = ['#080c0b', '#0e1210', '#51564d', '#d8dace', '#0a0e0c', '#3e453d', '#c0c3b6', '#121713']
+const detailColors = ['#111211', '#151615', '#393a38', '#b7b7b0', '#101110', '#343633', '#454641', '#161816']
 
 function mergeAndDispose(parts: BufferGeometry[]) {
   const merged = mergeGeometries(parts)!
@@ -106,11 +113,19 @@ function mergeAndDispose(parts: BufferGeometry[]) {
 }
 
 function createGeometryResources() {
+  const embossedTriangle = new ExtrudeGeometry(triangleShape, {
+    ...extrudeSettings,
+    depth: 0.015,
+    bevelThickness: 0.006,
+    bevelSize: 0.006,
+  }).translate(0.697, 1.034, 0.09)
+  const triangle = mergeVertices(embossedTriangle)
+  embossedTriangle.dispose()
   const parts: BufferGeometry[] = [
     new ShapeGeometry(shellShape).scale(1.004, 1.004, 1).translate(0, 0, -0.006),
     new ShapeGeometry(faceShape).scale(1.075, 1.075, 1).translate(0, 0, 0.082),
     new ShapeGeometry(faceShape).scale(1.025, 1.025, 1).translate(0, 0, 0.087),
-    new ShapeGeometry(triangleShape).translate(0.697, 1.034, 0.105),
+    triangle,
     new BoxGeometry(1.43, 0.055, 0.018).translate(0, -1.283, 0.083),
     new BoxGeometry(1.18, 0.025, 0.018).translate(0, -1.25, 0.093),
     new BoxGeometry(0.085, 0.062, 0.018).translate(0.85, -1.25, 0.086),
@@ -147,8 +162,8 @@ function createGeometryResources() {
   }
 }
 
-function createProjectTextures(project: Project) {
-  return { label: createProjectTexture(project), back: createBackTexture(project) }
+function createProjectTextures(project: Project, code: string, artworkCoverage: number) {
+  return { label: createProjectTexture(project, code, artworkCoverage), back: createBackTexture(project, code) }
 }
 
 function createCommonMaterials(surface: ReturnType<typeof createShellTexture>, shellColor: string, roughness: number, metalness: number, wear: number) {
@@ -185,23 +200,38 @@ const projectMaterialCache = new Map<string, SharedResource<ReturnType<typeof cr
 const disposeResources = (resources: Record<string, { dispose: () => void }>) => Object.values(resources).forEach(resource => resource.dispose())
 
 /** All detail is local to the card. The parent owns its motion and hit target. */
-export function CardModel({ project, shellColor, roughness, metalness, labelRoughness, wear }: CardModelProps) {
+export function CardModel({ project, code, artworkCoverage, dimensions, shellColor, roughness, metalness, labelRoughness, wear }: CardModelProps) {
   const geometry = useSharedResource(geometryCache, 'sd-card', createGeometryResources, disposeResources)
-  const projectKey = [project.id, project.art, project.color, project.discipline, project.year].join('|')
-  const textures = useSharedResource(textureCache, projectKey, () => createProjectTextures(project), disposeResources)
+  const projectKey = JSON.stringify([project.id, project.art, project.color, project.discipline, project.year, code, artworkCoverage])
+  const textures = useSharedResource(textureCache, projectKey, () => createProjectTextures(project, code, artworkCoverage), disposeResources)
   const common = useSharedResource(commonMaterialCache, JSON.stringify([shellColor, roughness, metalness, wear]),
     () => createCommonMaterials(geometry.surface, shellColor, roughness, metalness, wear), disposeResources)
   const materials = useSharedResource(projectMaterialCache, JSON.stringify([projectKey, labelRoughness, wear]),
     () => createProjectMaterials(project, textures, geometry.surface, labelRoughness, wear), disposeResources)
+  const { width, height, thickness } = dimensions
+  const sizing = useMemo(() => {
+    const bounds = new Box3()
+    for (const part of [geometry.body, geometry.details, geometry.label, geometry.tab, geometry.back, geometry.contacts]) {
+      part.computeBoundingBox()
+      if (part.boundingBox) bounds.union(part.boundingBox)
+    }
+    const size = bounds.getSize(new Vector3())
+    return {
+      scale: new Vector3(width / size.x, height / size.y, thickness / size.z),
+      offset: bounds.getCenter(new Vector3()).negate(),
+    }
+  }, [geometry, width, height, thickness])
 
   return (
-    <group dispose={null}>
-      <mesh castShadow receiveShadow geometry={geometry.body} material={common.shell} />
-      <mesh geometry={geometry.details} material={common.details} />
-      <mesh geometry={geometry.label} material={materials.label} />
-      <mesh castShadow geometry={geometry.tab} material={materials.tab} />
-      <mesh geometry={geometry.back} material={materials.back} />
-      <mesh geometry={geometry.contacts} material={common.contacts} />
+    <group dispose={null} scale={sizing.scale}>
+      <group position={sizing.offset}>
+        <mesh castShadow receiveShadow geometry={geometry.body} material={common.shell} />
+        <mesh geometry={geometry.details} material={common.details} />
+        <mesh geometry={geometry.label} material={materials.label} />
+        <mesh castShadow geometry={geometry.tab} material={materials.tab} />
+        <mesh geometry={geometry.back} material={materials.back} />
+        <mesh geometry={geometry.contacts} material={common.contacts} />
+      </group>
     </group>
   )
 }

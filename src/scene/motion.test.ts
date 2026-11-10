@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { damp, hoverInfluence, wrapOffset } from './motion'
+import { damp, hoverInfluence, scrollLean, wrapOffset } from './motion'
 
 describe('damp', () => {
   it('reaches the same position after equal elapsed time at different frame rates', () => {
@@ -105,5 +105,39 @@ describe('hoverInfluence', () => {
 
   it('lets a wider radius affect more neighbors', () => {
     expect(hoverInfluence(3, 3).lift).toBeGreaterThan(hoverInfluence(3, 1).lift)
+  })
+})
+
+
+describe('scrollLean', () => {
+  it('leans the top in the direction of travel and reacts more to faster input', () => {
+    const right = scrollLean(0, 0, -8, 1 / 60)
+    const left = scrollLean(0, 0, 8, 1 / 60)
+    expect(left.angle).toBeGreaterThan(0)
+    expect(right.angle).toBe(-left.angle)
+    expect(left.angle).toBeGreaterThan(scrollLean(0, 0, 2, 1 / 60).angle)
+  })
+
+  it('stays subtle at maximum input and settles upright after release', () => {
+    let state = { angle: 0, velocity: 0 }
+    for (let i = 0; i < 120; i++) state = scrollLean(state.angle, state.velocity, 100, 1 / 60)
+    expect(state.angle).toBeCloseTo(0.1, 6)
+    for (let i = 0; i < 120; i++) state = scrollLean(state.angle, state.velocity, 0, 1 / 60)
+    expect(state.angle).toBeCloseTo(0, 6)
+    expect(state.velocity).toBeCloseTo(0, 6)
+  })
+
+  it('responds consistently at different frame rates and reverses smoothly', () => {
+    function advance(fps: number) {
+      let state = { angle: 0, velocity: 0 }
+      for (let i = 0; i < fps / 2; i++) state = scrollLean(state.angle, state.velocity, 8, 1 / fps)
+      return state
+    }
+    expect(advance(30).angle).toBeCloseTo(advance(120).angle, 10)
+    let state = advance(60)
+    const first = scrollLean(state.angle, state.velocity, -8, 1 / 60)
+    expect(first.angle).toBeGreaterThan(0)
+    for (let i = 0; i < 60; i++) state = scrollLean(state.angle, state.velocity, -8, 1 / 60)
+    expect(state.angle).toBeLessThan(0)
   })
 })

@@ -13,6 +13,7 @@
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.0.4",
     "dialkit": "^2.1.0",
+    "lil-gui": "^0.21.0",
     "motion": "^12.23.24",
     "postprocessing": "^6.38.0",
     "react": "^19.2.0",

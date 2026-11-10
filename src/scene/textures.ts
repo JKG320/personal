@@ -52,15 +52,62 @@ export function createShellTexture() {
   return texture
 }
 
-export function createProjectTexture(project: Project) {
+// Rounded strokes keep the tape lettering readable without loading a font.
+const markerGlyphs: Record<string, number[][]> = {
+  A: [[0, 11, 4, 0, 9, 11], [2, 7, 7, 7.2]],
+  '0': [[4, 0, 1, 1.5, 0.5, 7.4, 2.1, 11, 6.5, 10.8, 8.1, 6.9, 7.4, 1.9, 4, 0]],
+  '1': [[2, 2.8, 5.3, 0, 5.1, 11], [2.8, 11, 7.8, 11]],
+  '2': [[0.8, 2.7, 2.5, 0.8, 5.7, 0.2, 7.8, 2.4, 6.6, 5.6, 0.8, 11, 8.4, 11]],
+  '3': [[0.9, 1.3, 4.5, 0.2, 7.7, 1.6, 6.9, 4.3, 3.2, 5.3, 6.8, 5.9, 8.2, 8.6, 6.3, 11, 1.1, 10.5]],
+  '4': [[5.3, 0.3, 0.3, 7.5, 8.9, 7.6], [6.8, 2.4, 6.6, 11]],
+  '5': [[7.8, 0.7, 2.2, 0.5, 1, 5.1, 5.8, 4.7, 8.1, 7.1, 7, 10.2, 3.4, 11, 0.8, 9.6]],
+  '6': [[7, 0.4, 3.6, 0.9, 1, 4.7, 0.8, 8.7, 3.1, 11, 6.8, 10.7, 8.1, 7.8, 6.2, 5.3, 1, 6.2]],
+  '7': [[0.8, 0.6, 8.3, 0.6, 5.5, 5, 3.3, 11], [2.5, 5.6, 7.1, 5.5]],
+  '8': [[4.7, 5.3, 1.1, 2.6, 2.2, 0.6, 5.8, 0.4, 7.6, 2, 6.9, 4, 4.7, 5.3, 1.1, 7.7, 1.5, 10.1, 4.4, 11, 7.8, 10, 8.2, 7.8, 4.7, 5.3]],
+  '9': [[7.4, 5.1, 4.3, 5.9, 1.2, 4.3, 1, 2.1, 2.8, 0.4, 6.2, 0.5, 8, 3.2, 7.5, 7.7, 5.5, 10.5, 2.8, 11]],
+}
+
+function drawCode(ctx: CanvasRenderingContext2D, code: string, rand: () => number) {
+  const glyphs = [...code].map(character => markerGlyphs[character])
+  if (glyphs.some(glyph => !glyph)) {
+    ctx.fillStyle = '#25231e'
+    ctx.font = 'italic 94px cursive'
+    ctx.textAlign = 'center'
+    ctx.fillText(code, 0, 30, 420)
+    return
+  }
+  const size = Math.min(8, 43 / glyphs.length)
+  ctx.strokeStyle = '#25231e'
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  glyphs.forEach((glyph, index) => {
+    ctx.save()
+    ctx.translate((index - (glyphs.length - 1) / 2) * size * 11.7 - size * 4.4, -size * 5.5 + (rand() - 0.5) * 7)
+    ctx.rotate((rand() - 0.5) * 0.11)
+    ctx.scale(size, size)
+    ctx.lineWidth = 0.95 + rand() * 0.3
+    for (const stroke of glyph) {
+      ctx.beginPath()
+      ctx.moveTo(stroke[0], stroke[1])
+      for (let i = 2; i < stroke.length; i += 2) ctx.lineTo(stroke[i], stroke[i + 1])
+      ctx.stroke()
+    }
+    ctx.restore()
+  })
+}
+
+export function createProjectTexture(project: Project, code: string, artworkCoverage: number) {
   const { element, context: ctx } = canvas(512, 768)
   const rand = random(project.art.charCodeAt(0) * 183)
   const ink = '#161b1a'
   const cream = '#e5dfc8'
+  const artworkHeight = 768 * artworkCoverage
+  const tapeHeight = 768 - artworkHeight
   ctx.fillStyle = project.color
   ctx.fillRect(0, 0, 512, 768)
 
   ctx.save()
+  ctx.scale(1, artworkHeight / 550)
   ctx.beginPath()
   ctx.rect(0, 0, 512, 550)
   ctx.clip()
@@ -173,37 +220,53 @@ export function createProjectTexture(project: Project) {
   ctx.restore()
 
   ctx.fillStyle = cream
+  ctx.save()
+  ctx.scale(1, artworkHeight / 550)
   ctx.font = '15px monospace'
   ctx.letterSpacing = '2px'
   ctx.fillText('REV 000 / FIELD NOTES', 29, 37)
   ctx.font = '13px monospace'
   ctx.fillText(project.discipline, 29, 521)
   ctx.letterSpacing = '0px'
+  ctx.restore()
+
+  ctx.fillStyle = '#31312c'
+  ctx.fillRect(0, artworkHeight, 512, tapeHeight)
 
   // A slightly torn strip of paper is printed into the label, with its own grain.
   ctx.save()
-  ctx.translate(256, 629)
-  ctx.rotate(-0.035)
+  ctx.translate(256, artworkHeight + tapeHeight * 0.5)
+  ctx.rotate(-0.021)
+  ctx.scale(1, tapeHeight / 220)
   ctx.shadowColor = 'rgba(0,0,0,.36)'
   ctx.shadowBlur = 8
   ctx.shadowOffsetY = 5
-  ctx.fillStyle = '#dcd3b8'
+  const tape = ctx.createLinearGradient(-245, -95, 245, 95)
+  tape.addColorStop(0, '#c9b694')
+  tape.addColorStop(0.45, '#ded0b2')
+  tape.addColorStop(1, '#c4af8f')
+  ctx.fillStyle = tape
   ctx.beginPath()
-  ctx.moveTo(-256, -78)
-  for (let x = -256; x <= 265; x += 13) ctx.lineTo(x, -78 + rand() * 7)
-  for (let y = -78; y <= 90; y += 13) ctx.lineTo(265 - rand() * 9, y)
-  for (let x = 265; x >= -265; x -= 13) ctx.lineTo(x, 90 - rand() * 7)
-  for (let y = 90; y >= -78; y -= 13) ctx.lineTo(-265 + rand() * 10, y)
+  ctx.moveTo(-249, -97)
+  for (let x = -249; x <= 249; x += 9) ctx.lineTo(x, -100 + rand() * 13)
+  for (let y = -98; y <= 100; y += 9) ctx.lineTo(249 - rand() * 13, y)
+  for (let x = 249; x >= -249; x -= 9) ctx.lineTo(x, 99 - rand() * 12)
+  for (let y = 99; y >= -100; y -= 9) ctx.lineTo(-249 + rand() * 13, y)
   ctx.closePath()
   ctx.fill()
   ctx.shadowColor = 'transparent'
-  ctx.fillStyle = '#1d2420'
-  ctx.font = '600 87px "Courier New", monospace'
-  ctx.textAlign = 'center'
-  ctx.fillText(project.id, 0, 26)
-  ctx.font = '12px monospace'
-  ctx.textAlign = 'left'
-  ctx.fillText('DESIGNED TO BE REMEMBERED', -220, 69)
+  ctx.clip()
+  for (let i = 0; i < 120; i++) {
+    const x = (rand() - 0.5) * 512
+    const y = (rand() - 0.5) * 220
+    ctx.strokeStyle = rand() < 0.55 ? 'rgba(255,247,226,.19)' : 'rgba(85,69,49,.13)'
+    ctx.lineWidth = 0.4 + rand()
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + rand() * 35 - 12, y + rand() * 7 - 3)
+    ctx.stroke()
+  }
+  drawCode(ctx, code, rand)
   ctx.restore()
 
   ctx.strokeStyle = 'rgba(250,244,225,.13)'
@@ -223,7 +286,7 @@ export function createProjectTexture(project: Project) {
   return texture
 }
 
-export function createBackTexture(project: Project) {
+export function createBackTexture(project: Project, code: string) {
   const { element, context: ctx } = canvas(512, 512)
   ctx.fillStyle = '#222724'
   ctx.fillRect(0, 0, 512, 512)
@@ -232,7 +295,7 @@ export function createBackTexture(project: Project) {
   ctx.fillText('REV 000', 39, 92)
   ctx.font = '18px monospace'
   ctx.fillText('MEMORY ARCHIVE', 39, 130)
-  ctx.fillText(project.id + ' / ' + project.year, 39, 170)
+  ctx.fillText(code + ' / ' + project.year, 39, 170)
   ctx.fillStyle = '#717971'
   ctx.font = '13px monospace'
   ctx.fillText('A SMALL COLLECTION OF IDEAS.', 39, 248)
@@ -243,7 +306,7 @@ export function createBackTexture(project: Project) {
     if (rand() > 0.35) ctx.fillRect(x, 348, rand() > 0.5 ? 2 : 1, 56)
   }
   ctx.font = '12px monospace'
-  ctx.fillText('000 001 026 / ' + project.id, 39, 432)
+  ctx.fillText('000 001 026 / ' + code, 39, 432)
   grain(ctx, 512, 512, 12, 721)
   const texture = new CanvasTexture(element)
   texture.colorSpace = SRGBColorSpace
