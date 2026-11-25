@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/build-production.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:prototype": "tsc -b && vite build",
+    "preview:production": "python3 -m http.server 5186 --bind 127.0.0.1 --directory dist"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",
